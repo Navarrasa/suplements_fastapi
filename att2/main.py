@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Path, Query, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, Path, Query, HTTPException, Body
+from pydantic import BaseModel, Field, HttpUrl
 from typing import List, Optional, Literal, Annotated
 import json
 import os
@@ -68,7 +68,7 @@ class SuplementRequest(BaseModel):
 class FilterParams(BaseModel):
     limit: int = Field(100, gt=0, le=100)
     offset: int = Field(0, ge=0)
-    order_by: Literal["id", "nome", "categoria"] = "id"  # Ajustado para campos existentes
+    order_by: Literal["id", "nome", "categoria"] = "id"
     tags: list[str] = []  # Para filtrar por palavras-chave em indicado_para
 
 # -----------------------------------------------------------------
@@ -126,3 +126,56 @@ async def filter_suplements(filter_query: Annotated[FilterParams, Query()]):
     filtered = filtered[start:end]
 
     return filtered
+
+@app.put("/update/{id}/", response_model=Suplement, summary="Atualize itens da Lista de acordo com seus parâmetros")
+async def update_suplements(id: int, item: Suplement):
+    try:
+        suplementos = load_suplements()
+
+        index = next((i for i, s in enumerate(suplementos) if s["id"] == id), None)
+
+        if index is None:
+            raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+        suplementos[index] = item.model_dump()
+    
+        save_suplements(suplementos)
+        
+        return suplementos[index]
+    except Exception as err:
+        print(f"Error: {str(err)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao processar a requisição: {str(err)}")
+
+@app.delete("/delete/{id}/", response_model=Suplement, summary="Delete Itens que não vai mais precisar!")
+async def delete_suplements(id: int):
+    suplementos = load_suplements()
+    index = next((i for i, s in enumerate(suplementos) if s["id"] == id), None)
+
+    if index is None:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    item_removido = suplementos.pop(index)
+    save_suplements(suplementos)
+
+    return item_removido
+
+
+class SuplementCardBox(BaseModel):
+    items : List[Suplement]
+    url : HttpUrl
+
+@app.get("/card_suplement_image/{id}", response_model=SuplementCardBox, summary="Busque produtos e suas imagens")
+async def suplement_image(id: int):
+    # Buscar o suplemento com o id fornecido
+    suplemento = next((s for s in suplementos if s["id"] == id), None)
+
+    if suplemento is None:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    # Aqui a URL da imagem seria extraída, no caso da variável 'imagem' no suplemento
+    suplement_with_image = SuplementCardBox(
+        items=[Suplement(**suplemento)],  # Criando o objeto Suplement a partir dos dados
+        url=suplemento["imagem"]         # Passando a URL da imagem
+    )
+
+    return suplement_with_image  # Retorna o suplemento com a imagem associada
